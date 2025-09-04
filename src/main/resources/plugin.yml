@@ -1,0 +1,4 @@
+name: oreRush
+version: '1.1-SNAPSHOT'
+main: sample.example.oreRush.OreRush
+api-version: '1.21'

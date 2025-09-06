@@ -8,7 +8,7 @@ public final class OreRush extends JavaPlugin {
   @Override
   public void onEnable() {
     // Plugin startup logic
-    CommandOreRush commandOreRush = new CommandOreRush;
+    //CommandOreRush commandOreRush = new CommandOreRush
 
 
   }

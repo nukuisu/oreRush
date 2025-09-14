@@ -10,6 +10,7 @@ public final class OreRush extends JavaPlugin implements Listener {
 
   @Override
   public void onEnable() {
+    saveDefaultConfig();
     CommandOreRush commandOreRush =new CommandOreRush(this);
     Bukkit.getPluginManager().registerEvents(commandOreRush, this);
     Objects.requireNonNull(getCommand("oreRush")).setExecutor(commandOreRush);

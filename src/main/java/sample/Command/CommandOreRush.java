@@ -17,6 +17,14 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 import sample.example.oreRush.OreRush;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.format.DateTimeFormatter;
+
 
 
 public class CommandOreRush implements CommandExecutor, Listener {
@@ -30,6 +38,51 @@ public class CommandOreRush implements CommandExecutor, Listener {
   private int score;
   private boolean gameActive = false; //
 
+  private void sendScoreList(CommandSender sender) {
+    // config から接続情報を取得（未設定ならデフォルトを使う）
+    String url  = oreRush.getConfig().getString(
+        "database.url",
+        "jdbc:mysql://localhost:3306/spigot_server2?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=utf8");
+    String user = oreRush.getConfig().getString("database.user", "root");
+    String pass = oreRush.getConfig().getString("database.password", "1467Ouninn/");
+
+    String sql = """
+      SELECT id, player_name, score, registered_at
+      FROM player_score
+      ORDER BY id DESC
+      LIMIT 20
+      """;
+
+    DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    try (Connection con = DriverManager.getConnection(url, user, pass);
+        PreparedStatement ps = con.prepareStatement(sql);
+        ResultSet rs = ps.executeQuery()) {
+
+      sender.sendMessage("§a--- Score List (latest 20) ---");
+      int count = 0;
+
+      while (rs.next()) {
+        int id = rs.getInt("id");
+        String name = rs.getString("player_name");
+        int score = rs.getInt("score");
+        Timestamp ts = rs.getTimestamp("registered_at");
+        String when = (ts != null) ? ts.toLocalDateTime().format(fmt) : "-";
+
+        sender.sendMessage(id + " | " + name + " | " + score + " | " + when);
+        count++;
+      }
+
+      if (count == 0) {
+        sender.sendMessage("記録がありません。");
+      }
+    } catch (SQLException e) {
+      sender.sendMessage("§cスコア一覧の取得に失敗しました: " + e.getMessage());
+      e.printStackTrace();
+    }
+  }
+
+
   public CommandOreRush(OreRush oreRush) {
     this.oreRush = oreRush;
     orePoints.put(Material.COPPER_ORE,10);
@@ -42,7 +95,17 @@ public class CommandOreRush implements CommandExecutor, Listener {
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
       @NotNull String label, @NotNull String[] args) {
 
+    // ▼ /oreRush list でスコア一覧を表示（直近20件）
+    if (args.length > 0 && args[0].equalsIgnoreCase("list")) {
+      sendScoreList(sender);
+      return true;
+    }
 
+
+    if (!(sender instanceof Player senderPlayer)) {
+      sender.sendMessage("このコマンドはゲーム内から実行してください。");
+      return true;
+    }
 
     if (sender instanceof Player Senderplayer) {
 
@@ -68,6 +131,8 @@ public class CommandOreRush implements CommandExecutor, Listener {
 
       Senderplayer.teleport(location);
 
+
+
       //制限時間を10秒に設定し、ゲーム終了時にメッセージを出す(3h)
       new BukkitRunnable() {
 
@@ -87,13 +152,22 @@ public class CommandOreRush implements CommandExecutor, Listener {
                   0, 60, 0);
             }
 
+            // ★ ここでスコアをDBへ保存（JDBC）
+            if (p != null) {
+              insertScore(p.getName(), score);  // ← 追加
+              p.sendTitle("ゲームが終了しました！", "合計" + score + "点！", 0, 60, 0);
+            }
+
+            // 後片付け
             CommandOreRush.this.player = null;
-            CommandOreRush.this.score = 0;
+            CommandOreRush.this.score  = 0;
+            return;
 
           }
           remainingTime--;
 
         }
+
 
       }.runTaskTimer(oreRush, 0L, 20L);
 
@@ -109,6 +183,7 @@ public class CommandOreRush implements CommandExecutor, Listener {
 
     if (!gameActive || player == null) return;
 
+
     if (!b.getPlayer().getUniqueId().equals(player.getUniqueId())) return;
 
     Block block = b.getBlock();
@@ -120,6 +195,30 @@ public class CommandOreRush implements CommandExecutor, Listener {
     if (point > 0) {
       score += point;
       player.sendMessage("採掘完了！現在のスコア: " + score + "点");
+    }
+  }
+
+  private void insertScore(String playerName, int totalScore) {
+    // config.yml から接続情報を読み込み（未設定ならデフォルト）
+    String url  = oreRush.getConfig().getString(
+        "database.url",
+        "jdbc:mysql://localhost:3306/spigot_server2?useSSL=false&serverTimezone=Asia/Tokyo&characterEncoding=utf8");
+    String user = oreRush.getConfig().getString("database.user", "root");
+    String pass = oreRush.getConfig().getString("database.password", "1467Ouninn/");
+
+    String sql = "INSERT INTO player_score (player_name, score, registered_at) " +
+        "VALUES (?, ?, CURRENT_TIMESTAMP)";
+
+    try (Connection con = DriverManager.getConnection(url, user, pass);
+        PreparedStatement ps = con.prepareStatement(sql)) {
+
+      ps.setString(1, playerName);
+      ps.setInt(2, totalScore);
+      ps.executeUpdate();
+
+    } catch (SQLException e) {
+      // 失敗時はサーバーログに出す（必要ならプレイヤーにも通知）
+      e.printStackTrace();
     }
   }
 

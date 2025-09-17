@@ -17,6 +17,7 @@ import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 import org.jetbrains.annotations.NotNull;
+import sample.GameSession.GameSession;
 import sample.example.oreRush.OreRush;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -26,18 +27,14 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 
-
-
 public class CommandOreRush implements CommandExecutor, Listener {
 
-  public static final int GAME_TIME = 10;
+  public static final int GAME_TIME = 30;
   private final OreRush oreRush;
   private final Map<Material,Integer> orePoints = new EnumMap<>(Material.class);
-  private Player player;
-  private int score;
-  private boolean gameActive = false; //
-  private int remainingTime;
   private BukkitTask timerTask;
+  private GameSession currentSession;
+  private int sessionCounter = 0;
 
   public CommandOreRush(OreRush oreRush) {
     this.oreRush = oreRush;
@@ -45,7 +42,6 @@ public class CommandOreRush implements CommandExecutor, Listener {
     orePoints.put(Material.GOLD_ORE,20);
     orePoints.put(Material.DIAMOND_ORE,50);
   }
-
 
   private void sendScoreList(CommandSender sender) {
     String url  = oreRush.getConfig().getString(
@@ -100,14 +96,13 @@ public class CommandOreRush implements CommandExecutor, Listener {
       sender.sendMessage("このコマンドはゲーム内から実行してください。");
       return true;
     }
-    if (gameActive) {
+    if (currentSession !=null && currentSession.active) {
       sender.sendMessage("ゲームは既に進行中です！");
       return true;
+    }else {
+      sessionCounter++;
+      currentSession = new GameSession(sessionCounter, senderplayer, GAME_TIME);
     }
-
-    this.player = senderplayer;
-    this.gameActive = true;
-    this.score = 0;
 
     //oreRushと打つとプレイヤーの装備を整え、採掘場所へワープする
     startGame(senderplayer);
@@ -133,9 +128,35 @@ public class CommandOreRush implements CommandExecutor, Listener {
     senderPlayer.teleport(location);
   }
 
+  private void startTimer() {
+
+    GameSession session = this.currentSession;
+
+    this.timerTask = new BukkitRunnable() {
+      @Override
+      public void run() {
+        // 最新のゲームでなければ何もしない
+        if (session != currentSession) { cancel(); return; }
+
+        session.remainingTime--;
+
+        if (session.remainingTime == 10) {
+          session.player.sendMessage("残り10秒です");
+        }
+
+        if (session.remainingTime <= 0) {
+          cancel();
+          // ここでもう一度チェック
+          if (session.remainingTime <= 0) { cancel(); finishGameAndCleanup(session); }
+        }
+      }
+    }.runTaskTimer(oreRush, 0L, 20L);
+
+  }
+
   // ゲーム終了＋後片付け（DB保存込み）
-  private void finishGameAndCleanup() {
-    Player p = this.player;
+  private void finishGameAndCleanup(GameSession session) {
+    Player p = session.player;
 
     try {
       if (timerTask != null) {
@@ -144,41 +165,27 @@ public class CommandOreRush implements CommandExecutor, Listener {
       }
 
       if (p != null) {
-        p.sendTitle("ゲームが終了しました！", "合計" + score + "点！", 0, 60, 0);
-        insertScore(p.getName(), score);
+        p.sendTitle("ゲームが終了しました！", "合計" + session.score + "点！", 0, 60, 0);
+        insertScore(p.getName(), session.score);
       }
     } catch (Exception e) {
       oreRush.getLogger().warning("スコア保存に失敗: " + e.getMessage());
     } finally {
-      gameActive = false;
-      player = null;
-      score = 0;
+      session.active = false;
+      session.player = null;
+      session.score = 0;
     }
-  }
-
-  private void startTimer() {
-
-    this.remainingTime = GAME_TIME;
-
-    this.timerTask = new BukkitRunnable() {
-      @Override
-      public void run() {
-        remainingTime--;
-        if (remainingTime <= 0) {
-          cancel();
-          finishGameAndCleanup();
-        }
-      }
-    }.runTaskTimer(oreRush, 0L, 20L);
   }
 
   //鉱石ごとに点数をカウントする
   @EventHandler
-  public void onBlockBreak(BlockBreakEvent b) {
+  public void onBlockBreak(BlockBreakEvent b ) {
 
-    if (!gameActive || player == null) return;
+    GameSession session = this.currentSession;
 
-    if (!b.getPlayer().getUniqueId().equals(player.getUniqueId())) return;
+    if (session == null || !session.active) return;
+    if (session.player == null) return;
+    if (!b.getPlayer().getUniqueId().equals(session.player.getUniqueId())) return;
 
     Block block = b.getBlock();
     Material type = block.getType();
@@ -186,8 +193,8 @@ public class CommandOreRush implements CommandExecutor, Listener {
     int point = orePoints.getOrDefault(type,0);
 
     if (point > 0) {
-      score += point;
-      player.sendMessage("採掘完了！現在のスコア: " + score + "点");
+      session.score += point;
+      session.player.sendMessage("採掘完了！現在のスコア: " + session.score + "点");
     }
   }
 

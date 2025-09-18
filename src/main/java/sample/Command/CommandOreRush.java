@@ -29,20 +29,17 @@ import java.time.format.DateTimeFormatter;
 
 public class CommandOreRush implements CommandExecutor, Listener {
 
-  public static final int GAME_TIME = 30;
   private final OreRush oreRush;
-  private final Map<Material,Integer> orePoints = new EnumMap<>(Material.class);
+
+  public static final int GAME_TIME = 30;
   private BukkitTask timerTask;
   private GameSession currentSession;
   private int sessionCounter = 0;
 
   public CommandOreRush(OreRush oreRush) {
     this.oreRush = oreRush;
-    orePoints.put(Material.COPPER_ORE,10);
-    orePoints.put(Material.GOLD_ORE,20);
-    orePoints.put(Material.DIAMOND_ORE,50);
   }
-
+  
   private void sendScoreList(CommandSender sender) {
     String url  = oreRush.getConfig().getString(
         "database.url",
@@ -51,11 +48,12 @@ public class CommandOreRush implements CommandExecutor, Listener {
     String pass = oreRush.getConfig().getString("database.password", "1467Ouninn/");
 
     String sql = """
-      SELECT id, player_name, score, registered_at
-      FROM player_score
-      ORDER BY id DESC
-      LIMIT 20
-      """;
+  SELECT id, player_name, score, registered_at
+  FROM player_score
+  ORDER BY registered_at DESC
+  LIMIT 5
+  """;
+
 
     DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -63,8 +61,7 @@ public class CommandOreRush implements CommandExecutor, Listener {
         PreparedStatement ps = con.prepareStatement(sql);
         ResultSet rs = ps.executeQuery()) {
 
-      sender.sendMessage("§a--- Score List (latest 20) ---");
-      int count = 0;
+      sender.sendMessage("§a--- Score List (latest 5) ---");
 
       while (rs.next()) {
         int id = rs.getInt("id");
@@ -74,7 +71,6 @@ public class CommandOreRush implements CommandExecutor, Listener {
         String when = (ts != null) ? ts.toLocalDateTime().format(fmt) : "-";
 
         sender.sendMessage(id + " | " + name + " | " + score + " | " + when);
-        count++;
       }
     } catch (SQLException e) {
       sender.sendMessage("§cスコア一覧の取得に失敗しました: " + e.getMessage());
@@ -86,7 +82,7 @@ public class CommandOreRush implements CommandExecutor, Listener {
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
       @NotNull String label, @NotNull String[] args) {
 
-    // ▼ /oreRush list でスコア一覧を表示（直近20件）
+    // oreRush list でスコア一覧を表示（直近5件）
     if (args.length > 0 && args[0].equalsIgnoreCase("list")) {
       sendScoreList(sender);
       return true;
@@ -105,27 +101,13 @@ public class CommandOreRush implements CommandExecutor, Listener {
     }
 
     //oreRushと打つとプレイヤーの装備を整え、採掘場所へワープする
-    startGame(senderplayer);
+    startGame();
     //制限時間を10秒に設定し、ゲーム終了時にメッセージを出す
     startTimer(); return true;
   }
 
-  private static void startGame(Player senderPlayer) {
-    senderPlayer.setHealth(20);
-    senderPlayer.setFoodLevel(20);
-
-    PlayerInventory inventory = senderPlayer.getInventory();
-    inventory.setHelmet(new ItemStack(Material.IRON_HELMET));
-    inventory.setChestplate(new ItemStack(Material.IRON_CHESTPLATE));
-    inventory.setLeggings(new ItemStack(Material.IRON_LEGGINGS));
-    inventory.setBoots(new ItemStack(Material.IRON_BOOTS));
-    inventory.setItemInMainHand(new ItemStack(Material.IRON_PICKAXE));
-
-    senderPlayer.sendTitle(
-        "ゲームスタート", "鉱石をたくさん掘れ", 0, 30, 0);
-
-    Location location = new Location(senderPlayer.getWorld(), 0, 110, 0);
-    senderPlayer.teleport(location);
+  private void startGame() {
+    currentSession.preparePlayer();
   }
 
   private void startTimer() {
@@ -190,7 +172,7 @@ public class CommandOreRush implements CommandExecutor, Listener {
     Block block = b.getBlock();
     Material type = block.getType();
 
-    int point = orePoints.getOrDefault(type,0);
+    int point = session.getPoint(type);
 
     if (point > 0) {
       session.score += point;

@@ -31,15 +31,18 @@ public class CommandOreRush implements CommandExecutor, Listener {
 
   private final OreRush oreRush;
 
-  public static final int GAME_TIME = 30;
   private BukkitTask timerTask;
   private GameSession currentSession;
   private int sessionCounter = 0;
 
+  /**
+   *orerushと打つと採掘ゲームが始まる
+   */
   public CommandOreRush(OreRush oreRush) {
     this.oreRush = oreRush;
   }
-  
+
+  //orerush listと打つと直近5件分の点数が閲覧できる
   private void sendScoreList(CommandSender sender) {
     String url  = oreRush.getConfig().getString(
         "database.url",
@@ -53,7 +56,6 @@ public class CommandOreRush implements CommandExecutor, Listener {
   ORDER BY registered_at DESC
   LIMIT 5
   """;
-
 
     DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
@@ -78,16 +80,16 @@ public class CommandOreRush implements CommandExecutor, Listener {
     }
   }
 
+
   @Override
   public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command,
       @NotNull String label, @NotNull String[] args) {
 
-    // oreRush list でスコア一覧を表示（直近5件）
     if (args.length > 0 && args[0].equalsIgnoreCase("list")) {
       sendScoreList(sender);
       return true;
     }
-
+    //違うプレイヤーや連続でorerushと打ったらゲームは止まる
     if (!(sender instanceof Player senderplayer)) {
       sender.sendMessage("このコマンドはゲーム内から実行してください。");
       return true;
@@ -97,12 +99,10 @@ public class CommandOreRush implements CommandExecutor, Listener {
       return true;
     }else {
       sessionCounter++;
-      currentSession = new GameSession(sessionCounter, senderplayer, GAME_TIME);
+      currentSession = new GameSession(sessionCounter, senderplayer);
     }
 
-    //oreRushと打つとプレイヤーの装備を整え、採掘場所へワープする
     startGame();
-    //制限時間を10秒に設定し、ゲーム終了時にメッセージを出す
     startTimer(); return true;
   }
 
@@ -112,31 +112,21 @@ public class CommandOreRush implements CommandExecutor, Listener {
 
   private void startTimer() {
 
-    GameSession session = this.currentSession;
+    if (this.timerTask != null) { this.timerTask.cancel(); this.timerTask = null; }
+    final GameSession session = this.currentSession;
 
     this.timerTask = new BukkitRunnable() {
       @Override
       public void run() {
-        // 最新のゲームでなければ何もしない
         if (session != currentSession) { cancel(); return; }
 
-        session.remainingTime--;
-
-        if (session.remainingTime == 10) {
-          session.player.sendMessage("残り10秒です");
-        }
-
-        if (session.remainingTime <= 0) {
-          cancel();
-          // ここでもう一度チェック
-          if (session.remainingTime <= 0) { cancel(); finishGameAndCleanup(session); }
-        }
+        boolean finished = session.tick();
+        if (finished) { cancel(); finishGameAndCleanup(session);}
       }
-    }.runTaskTimer(oreRush, 0L, 20L);
+    }.runTaskTimer(oreRush, 20L, 20L);
 
   }
 
-  // ゲーム終了＋後片付け（DB保存込み）
   private void finishGameAndCleanup(GameSession session) {
     Player p = session.player;
 
@@ -159,7 +149,6 @@ public class CommandOreRush implements CommandExecutor, Listener {
     }
   }
 
-  //鉱石ごとに点数をカウントする
   @EventHandler
   public void onBlockBreak(BlockBreakEvent b ) {
 
@@ -169,18 +158,10 @@ public class CommandOreRush implements CommandExecutor, Listener {
     if (session.player == null) return;
     if (!b.getPlayer().getUniqueId().equals(session.player.getUniqueId())) return;
 
-    Block block = b.getBlock();
-    Material type = block.getType();
-
-    int point = session.getPoint(type);
-
-    if (point > 0) {
-      session.score += point;
-      session.player.sendMessage("採掘完了！現在のスコア: " + session.score + "点");
-    }
+    session.addScore(b.getBlock());
   }
 
-  //oreRush listコマンドにてスコアを閲覧
+  //点数をDBへ保存
   private void insertScore(String playerName, int totalScore) {
     String url  = oreRush.getConfig().getString(
         "database.url",

@@ -25,7 +25,8 @@
 ---
 
 ## デモ動画
-（例：GitHubのAssetsやYouTubeリンクをここに貼る）
+[🎥 デモを再生する](https://github.com/nukuisu/oreRush/raw/main/docs/orerush_demo.mp4)
+
 ---
 
 ## 動作環境

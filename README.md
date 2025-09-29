@@ -25,7 +25,7 @@
 ---
 
 ## デモ動画
-[🎥 デモを再生する](https://github.com/nukuisu/oreRush/raw/main/docs/orerush_demo.mp4)
+[🎥 デモを再生する](https://img.youtube.com/vi/NJIBmDLe3E8/0.jpg)](https://www.youtube.com/watch?v=NJIBmDLe3E8)
 
 ---
 

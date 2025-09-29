@@ -62,3 +62,6 @@
 | difficulty    | varchar(30)  | YES  |     | NULL    |                |
 | registered_at | datetime     | YES  |     | NULL    |                |
 
+## 今後の改善予定
+- パッケージ名の修正
+-クラス構成の見直し

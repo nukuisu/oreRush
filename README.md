@@ -25,7 +25,11 @@
 ---
 
 ## デモ動画
-[🎥 デモを再生する](https://img.youtube.com/vi/NJIBmDLe3E8/0.jpg)](https://www.youtube.com/watch?v=NJIBmDLe3E8)
+## 🎥 デモ動画
+
+[![デモを再生する](https://img.youtube.com/vi/NJIBmDLe3E8/0.jpg)](https://www.youtube.com/watch?v=NJIBmDLe3E8)
+
+※ クリックすると YouTube 上で再生されます。
 
 ---
 
